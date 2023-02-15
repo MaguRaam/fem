@@ -1,8 +1,8 @@
-L2 : L2.cpp
-	g++ -O3 L2.cpp -I /home/magu/library/eigen -o L2
+ex1 : ex1.cpp
+	g++ -O3 ex1.cpp -I /home/magu/library/eigen -o ex1
 
 clean:
-	@rm L2
+	@rm ex1
 
 distclean:
 	@rm *.dat
