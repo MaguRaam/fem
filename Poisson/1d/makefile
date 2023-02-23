@@ -1,7 +1,7 @@
 CXX = g++
 CXXFLAGS = -O3 -I /home/magu/library/eigen
-TARGET = poisson
-SOURCES = poisson.cpp
+TARGET = ex3
+SOURCES = ex3.cpp
 OBJECTS = $(SOURCES:.cpp=.o)
 
 $(TARGET): $(OBJECTS)
@@ -9,11 +9,11 @@ $(TARGET): $(OBJECTS)
 
 .PHONY: clean
 clean:
-	rm $(TARGET) $(OBJECTS)
+	@rm -f $(TARGET) $(OBJECTS)
 
 .PHONY: distclean
 distclean: clean
-	rm *.dat
+	@rm -f *.dat
 
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
