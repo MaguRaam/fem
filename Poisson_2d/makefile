@@ -12,7 +12,7 @@ clean:
 	@rm -f $(TARGET) $(OBJECTS)
 
 distclean: clean
-	@rm -f *.vtk *.png *.mtx
+	@rm -f *.vtk *.mtx *.dat mesh/*.dat mesh/*.msh 
 
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@

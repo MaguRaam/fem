@@ -1,20 +1,10 @@
 #pragma once
 
-#include <iostream>
-#include <fstream>
-#include <filesystem>
-#include <vector>
-#include <chrono>
-
 #include <Eigen/Dense>
-#include <Eigen/Sparse>
-#include <unsupported/Eigen/SparseExtra>
-
-using namespace std;
-using namespace Eigen;
+#include <fstream>
 
 // load connectivity matrix for triangular mesh:
-void load_connectivity(const std::string& filename, MatrixX3i &conn)
+void load_connectivity(const std::string& filename, Eigen::MatrixX3i &conn)
 {
     std::ifstream file(filename);
     if (!file.good())
@@ -31,7 +21,7 @@ void load_connectivity(const std::string& filename, MatrixX3i &conn)
 }
 
 // load nodal coordinates:
-void load_coordinates(const std::string& filename, VectorXd &x, VectorXd &y)
+void load_coordinates(const std::string& filename, Eigen::VectorXd &x, Eigen::VectorXd &y)
 {
     std::ifstream file(filename);
     if (!file.good())
@@ -48,8 +38,8 @@ void load_coordinates(const std::string& filename, VectorXd &x, VectorXd &y)
     file.close();
 }
 
-// write mesh file
-void write_vtk(const MatrixX3i& conn, const VectorXd& x, const VectorXd& y, const VectorXd& U, const VectorXd& Uexact, const VectorXd& Error, const std::string& filename)
+// write solution in vtk file format:
+void write_vtk(const Eigen::MatrixX3i& conn, const Eigen::VectorXd& x, const Eigen::VectorXd& y, const Eigen::VectorXd& U, const Eigen::VectorXd& Uexact, const Eigen::VectorXd& Error, const std::string& filename)
 {
     std::ofstream file(filename);
     if (!file.good())
@@ -58,7 +48,9 @@ void write_vtk(const MatrixX3i& conn, const VectorXd& x, const VectorXd& y, cons
     file.flags(std::ios::dec | std::ios::scientific);
     file.precision(16);
 
+    // Write VTK header
     file << "# vtk DataFile Version 3.0\nvtk fileput\nASCII\nDATASET UNSTRUCTURED_GRID\n";
+    
     
     const int nNodes = x.size();
     file << "POINTS " << nNodes << " float\n";
@@ -66,7 +58,7 @@ void write_vtk(const MatrixX3i& conn, const VectorXd& x, const VectorXd& y, cons
         file << x(n) << " " << y(n) << " 0\n";
     
     const int nElements = conn.rows();
-    file << "CELLS " << nElements << " " << nElements * 4 << "\n";
+    file << "CELLS " << nElements << " " << nElements * (3 + 1) << "\n";
     for (int e = 0; e < nElements; ++e)
         file << "3 " << conn(e, 0) << " " << conn(e, 1) << " " << conn(e, 2) << "\n";
     
