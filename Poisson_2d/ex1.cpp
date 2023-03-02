@@ -39,10 +39,10 @@ inline Vector3d compute_Flocal(F f, const Vector3d &X, const Vector3d &Y)
     Vector3d Flocal = Vector3d::Zero();
 
     // get quadrature pts and weights:
-    const auto &nqpts = GaussQuadratureTriangle<3>::nqpts;
-    const auto &wts = GaussQuadratureTriangle<3>::wts;
-    const auto &r = GaussQuadratureTriangle<3>::r;
-    const auto &s = GaussQuadratureTriangle<3>::s;
+    const auto &nqpts = GaussQuadratureTriangle<1>::nqpts;
+    const auto &wts = GaussQuadratureTriangle<1>::wts;
+    const auto &r = GaussQuadratureTriangle<1>::r;
+    const auto &s = GaussQuadratureTriangle<1>::s;
 
     // loop over quadrature pts and compute local force vector:
     for (int q = 0; q < nqpts; ++q)
@@ -154,6 +154,8 @@ int main()
     VectorXd U = solver.solve(F);
     assert(solver.info() == Success);
 
+    // plot:
+
     // compute abs Error:
     VectorXd Error = (U - Uexact).cwiseAbs();
 
@@ -162,27 +164,50 @@ int main()
 
     // Postprocessing:
 
-    // write L2 error:
-    std::ofstream file("error.dat", std::ios::app);
-    file.flags(std::ios::dec | std::ios::scientific);
-
+    // compute l2error, energy error, energy functional of uexact, uh and piu:
     double l2error = 0.0;
+    double energyerror_uh = 0.0;
+    double energyerror_piu = 0.0;
+    double energy_uexact = 0.0;
+    double energy_uh = 0.0;
+    double energy_piu = 0.0;
 
     for (int e = 0; e < nElements; ++e)
     {
         // get coordinates of the nodes and the nodal values:
-        Vector3d X, Y, Uh;
+        Vector3d X, Y, Uh, piU;
         for (int n = 0; n < 3; ++n)
         {
             X(n) = x(conn(e, n));
             Y(n) = y(conn(e, n));
             Uh(n) = U(conn(e, n));
+            piU(n) = Uexact(conn(e, n));
         }
 
+        energy_uh += energy_functional(X, Y, Uh, f);
+        energy_piu += energy_functional(X, Y, piU, f);
+        energy_uexact += energy_functional(X, Y, uexact, grad_uexact, f);
+
         l2error += L2error(uexact, X, Y, Uh);
+        energyerror_uh += energy_error(grad_uexact, X, Y, Uh);
+        energyerror_piu += energy_error(grad_uexact, X, Y, piU);
     }
 
-    file << sqrt(1.0 / nElements) << "\t" << sqrt(l2error) << std::endl;
+    // write L2 and Energy error to a file:
+    std::ofstream file("error.dat", std::ios::app);
+    file.flags(std::ios::dec | std::ios::scientific);
+
+    file << sqrt(1.0 / nElements) << "\t" << sqrt(l2error) << "\t" << sqrt(energyerror_uh) << std::endl;
+    file.close();
+
+    // write energy of exact, fem and interpolated solution:
+    file.open("energy.dat", std::ios::app);
+    file << sqrt(1.0 / nElements) << "\t" << energy_uexact << "\t" << energy_uh << "\t" << energy_piu << "\n";
+    file.close();
+
+    // write energy error of fem and interpolated solution:
+    file.open("energy_error.dat", std::ios::app);
+    file << sqrt(1.0 / nElements) << "\t" << energyerror_uh << "\t" << energyerror_piu << "\n";
     file.close();
 
     return 0;
