@@ -22,13 +22,29 @@ void GetElementStiffnessMatrix(const double *nodal_coords, double kmat[][3]);
 void GetElementForceVector(const double *nodal_coords, double *fvec, double (*f)(double, double));
 
 // compute L2 error:
-double L2Error(const double *nodal_coords, const double *unode, double (*f)(double, double));
+double L2Error(const double *nodal_coords, const double *unode, double (*uexact)(double, double));
+
+// compute energy error:
+double EnergyError(const double *nodal_coords, const double *unode, void (*grad_uexact)(double, double, double *graduexact));
+
+// compute energy functional of fem or interpolated solution:
+double EnergyFunctional(const double *nodal_coords, const double *unode, double (*f)(double, double));
+
+// compute energy functional of fem or interpolated solution:
+double EnergyFunctional(const double *nodal_coords, double (*uexact)(double, double), void (*grad_uexact)(double, double, double *graduexact), double (*f)(double, double));
 
 // forcing function:
-double f(double x, double y){return 2.0 * M_PI * M_PI * sin(M_PI * x) * sin(M_PI * y);}
+double f(double x, double y) { return 2.0 * M_PI * M_PI * sin(M_PI * x) * sin(M_PI * y); }
 
 // exact solution:
-double uexact(double x, double y){return sin(M_PI * x) * sin(M_PI * y);}
+double uexact(double x, double y) { return sin(M_PI * x) * sin(M_PI * y); }
+
+// gradien of exact solution:
+void grad_uexact(double x, double y, double graduexact[2])
+{
+    graduexact[0] = M_PI * cos(M_PI * x) * sin(M_PI * y);
+    graduexact[1] = M_PI * cos(M_PI * y) * sin(M_PI * x);
+}
 
 int main()
 {
@@ -87,7 +103,7 @@ int main()
     // set dirchlet boundary condition:
     for (int n = 0; n < nNodes; ++n)
     {
-        const double *x = &coordinates[2*n];
+        const double *x = &coordinates[2 * n];
 
         // check if node is located on the boundary:
         if (x[0] == 0.0 || x[0] == 1.0 || x[1] == 0.0 || x[1] == 1.0)
@@ -113,8 +129,9 @@ int main()
 
     // compute exact solution:
     VectorXd Uexact(nNodes);
-    for (int n = 0; n < nNodes; ++n){
-        const double *x = &coordinates[2*n];
+    for (int n = 0; n < nNodes; ++n)
+    {
+        const double *x = &coordinates[2 * n];
         Uexact(n) = uexact(x[0], x[1]);
     }
 
@@ -124,11 +141,11 @@ int main()
     // write solution:
     write("sol.dat", coordinates, connectivity, Error.data());
 
-
-    //Postprocessing:
+    // Postprocessing:
 
     // compute l2error:
-    double l2error = 0.0;
+    double l2error = 0.0, energyerror_uh = 0.0, energyerror_piu = 0.0;
+    double energy_uexact = 0.0, energy_uh = 0.0, energy_piu = 0.0;
 
     for (int e = 0; e < nElements; ++e)
     {
@@ -136,15 +153,22 @@ int main()
         const int *conn = &connectivity[3 * e];
 
         // get nodal coordinates:
-        double nodal_coord[6], Uh[3];
+        double nodal_coord[6], Uh[3], piU[3];
         for (int n = 0; n < 3; ++n)
         {
             nodal_coord[2 * n] = coordinates[2 * conn[n]];         // x
             nodal_coord[2 * n + 1] = coordinates[2 * conn[n] + 1]; // y
             Uh[n] = U(conn[n]);
+            piU[n] = Uexact(conn[n]);
         }
 
         l2error += L2Error(nodal_coord, Uh, uexact);
+        energyerror_uh += EnergyError(nodal_coord, Uh, grad_uexact);
+        energyerror_piu += EnergyError(nodal_coord, piU, grad_uexact);
+    
+        energy_uh += EnergyFunctional(nodal_coord, Uh, f);
+        energy_piu += EnergyFunctional(nodal_coord, piU, f);
+        energy_uexact += EnergyFunctional(nodal_coord, uexact, grad_uexact, f);
     }
 
     // write L2 and Energy error to a file:
@@ -152,9 +176,18 @@ int main()
     file.flags(std::ios::dec | std::ios::scientific);
     file.precision(16);
 
-    file << sqrt(1.0 / nElements) << "\t" << sqrt(l2error)  << std::endl;
+    file << sqrt(1.0 / nElements) << "\t" << sqrt(l2error) << "\t" << sqrt(energyerror_uh) << std::endl;
     file.close();
 
+    // write energy error of fem and interpolated solution:
+    file.open("energy_error.dat", std::ios::app);
+    file << sqrt(1.0 / nElements) << "\t" << energyerror_uh << "\t" << energyerror_piu << "\n";
+    file.close();
+
+    // write energy of exact, fem and interpolated solution:
+    file.open("energy.dat", std::ios::app);
+    file << sqrt(1.0 / nElements) << "\t" << energy_uexact << "\t" << energy_uh << "\t" << energy_piu << "\n";
+    file.close();
 
     return 0;
 }
@@ -292,14 +325,105 @@ double L2Error(const double *nodal_coords, const double *unode, double (*uexact)
         double uh = 0.0;
 
         // get shape function and detJ at xi:
-        for (int i = 0; i < 3; ++i){
+        for (int i = 0; i < 3; ++i)
+        {
             double Ni, gradNi[2];
             GetShapeFunction(xi[q], i, nodal_coords, Ni, gradNi, detJ);
-            uh += Ni*unode[i];
+            uh += Ni * unode[i];
         }
 
         l2error += pow((uexact(x[0], x[1]) - uh), 2.0) * detJ * 0.5 * wts[q];
     }
 
     return l2error;
+}
+
+// compute energy error:
+double EnergyError(const double *nodal_coords, const double *unode, void (*grad_uexact)(double, double, double *graduexact))
+{
+    double error = 0.0;
+
+    // loop over quadrature points:
+    for (int q = 0; q < nqpts; ++q)
+    {
+        // map point in parametric element to physical element:
+        double detJ, x[2];
+        isomap(xi[q], x, nodal_coords);
+
+        double grad_uh[2] = {0.0, 0.0};
+
+        // get shape function and detJ at xi and compute gradient of uh:
+        for (int i = 0; i < 3; ++i)
+        {
+            double Ni, gradNi[2];
+            GetShapeFunction(xi[q], i, nodal_coords, Ni, gradNi, detJ);
+            grad_uh[0] += gradNi[0] * unode[i];
+            grad_uh[1] += gradNi[1] * unode[i];
+        }
+
+        // get exact gradient:
+        double graduexact[2];
+        grad_uexact(x[0], x[1], graduexact);
+
+        error += ((graduexact[0] * graduexact[0] + graduexact[1] * graduexact[1]) + (grad_uh[0] * grad_uh[0] + grad_uh[1] * grad_uh[1]) - 2.0 * (graduexact[0] * grad_uh[0] + graduexact[1] * grad_uh[1])) * detJ * 0.5 * wts[q];
+    }
+
+    return error;
+}
+
+// compute energy functional of fem or interpolated solution:
+double EnergyFunctional(const double *nodal_coords, const double *unode, double (*f)(double, double))
+{
+    double energy = 0.0;
+
+    // loop over quadrature points:
+    for (int q = 0; q < nqpts; ++q)
+    {
+        // map point in parametric element to physical element:
+        double detJ, x[2];
+        isomap(xi[q], x, nodal_coords);
+
+        double grad_u[2] = {0.0, 0.0}, u = 0.0;
+
+        // get shape function and detJ at xi and compute gradient of uh:
+        for (int i = 0; i < 3; ++i)
+        {
+            double Ni, gradNi[2];
+            GetShapeFunction(xi[q], i, nodal_coords, Ni, gradNi, detJ);
+            grad_u[0] += gradNi[0] * unode[i];
+            grad_u[1] += gradNi[1] * unode[i];
+            u += Ni * unode[i];
+        }
+
+        energy += (0.5 * (grad_u[0] * grad_u[0] + grad_u[1] * grad_u[1]) - f(x[0], x[1]) * u) * detJ * 0.5 * wts[q];
+    }
+
+    return energy;
+}
+
+// compute energy functional of fem or interpolated solution:
+double EnergyFunctional(const double *nodal_coords, double (*uexact)(double, double), void (*grad_uexact)(double, double, double *graduexact), double (*f)(double, double))
+{
+    double energy = 0.0;
+
+    // loop over quadrature points:
+    for (int q = 0; q < nqpts; ++q)
+    {
+        // map point in parametric element to physical element:
+        double detJ, x[2];
+        isomap(xi[q], x, nodal_coords);
+
+        // compute detJ
+        double Ni, gradNi[2];
+        GetShapeFunction(xi[q], 0, nodal_coords, Ni, gradNi, detJ);
+
+        // get exact gradient:
+        double grad_u[2];
+        grad_uexact(x[0], x[1], grad_u);
+        double u = uexact(x[0], x[1]);
+    
+        energy += (0.5 * (grad_u[0] * grad_u[0] + grad_u[1] * grad_u[1]) - f(x[0], x[1])*u) * detJ * 0.5 * wts[q];
+    }
+
+    return energy;
 }
