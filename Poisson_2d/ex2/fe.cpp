@@ -19,6 +19,7 @@ void GetShapeFunction(const double *xi, int a, double &val, double *dval)
         val = xi[1];
         dval[0] = 0.0;
         dval[1] = 1.0;
+        break;
     default:
         break;
     }
